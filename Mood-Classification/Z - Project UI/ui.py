@@ -1,17 +1,12 @@
-from utils import typewriter, take_selfie, display_pic, analyze_emotions, find_face_and_resize, img_buffer_to_cv2_img 
+from utils import typewriter, take_selfie, display_pic, analyze_emotions, find_face, resize_image, img_buffer_to_cv2_img 
+from utils import init_music_player, recommend_songs
+from utils import select_true_emotion
 import streamlit as st
 import pandas as pd
 import tensorflow as tf
 import time 
 
-
-# cnn_loaded_model = tf.keras.models.load_model("./big_data/Saved_Models/sentiment_CNN_model.h5")
-# mbn_loaded_model = tf.keras.models.load_model("./big_data/Saved_Models/sentiment_MobileNet_model.h5")
-# rsn_loaded_model = tf.keras.models.load_model("./big_data/Saved_Models/sentiment_ResNet_model.h5")
-# vgg_loaded_model = tf.keras.models.load_model("./big_data/Saved_Models/sentiment_VGG19_model.h5")
-
-# models = [cnn_loaded_model, mbn_loaded_model, rsn_loaded_model, vgg_loaded_model]
-# model_names = ["CNN", "MobileNet", "ResNet", "VGG19"]
+print = st.write
 
 # Load models
 model_paths = [
@@ -51,7 +46,7 @@ if (is_completed == 0):
         with st.spinner("Looking for Human Face..."):
             img_bytes = img_buffer_to_cv2_img(img_buffer)
             try: 
-                frame, face = find_face_and_resize(img_bytes, 48)
+                frame, face = find_face(img_bytes)
             except TypeError:
                 st.session_state.img_clicked = False
                 camera_container.empty()
@@ -68,14 +63,40 @@ if (is_completed == 0):
             with st.expander("Detected Face"):
                 st.image(frame, use_column_width=True)
         
-        # with st.spinner("Analysing Emotion..."):
-        #     for model in models:
-        #         img, emotion, confidence = analyze_emotions(face, model, tf)
-        #         predicted_emotion.append(emotion)
-        #         predicted_confidence.append(confidence)
-            # TODO: ADD Colors here
-            # confidence = round(confidence * 100, 2)
-            # st.write(f"The detected Emotion is :green[{emotion}], {confidence}% confident")
+        with st.spinner("Analysing Emotion..."):
+            for i, model in enumerate(models):
+                if i == 0:
+                    img = resize_image(face, 48)
+                else:
+                    img = resize_image(face, 224)
+                    
+                img, emotion, confidence = analyze_emotions(img, model, tf)
+                confidence = round(confidence * 100, 2)
+                predicted_emotion.append(emotion)
+                predicted_confidence.append(f"{confidence}%")
+                
+            data = {
+                'Model name': model_names,
+                'Predicted emotion': predicted_emotion,
+                'Confidence': predicted_confidence
+                }
+
+            df = pd.DataFrame(data)
+            st.header("Emotion Analysis Summary")
+            st.table(df)
+            
+            emotion = select_true_emotion(df)
+
+            if emotion not in ["Angry", "Disgust", "Fear", "Sad"]:
+                st.write(f"#### The detected Emotion is :green[{emotion}], {confidence}% confident")
+            else:
+                st.write(f"#### The detected Emotion is :red[{emotion}], {confidence}% confident")
+        
+        with st.spinner("Recommending Songs..."):                
+            st.header("Recommended Songs")
+            music_palyer = init_music_player()
+            music_list = recommend_songs(emotion, music_palyer)
+            st.table(music_list)
         
 
 with st.sidebar:
@@ -86,3 +107,7 @@ with st.sidebar:
             camera_container.empty()
             st.session_state.img_clicked = False
             st.rerun()
+
+
+
+
