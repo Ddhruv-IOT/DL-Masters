@@ -1,11 +1,13 @@
 from utils import typewriter, take_selfie, display_pic, analyze_emotions, find_face, resize_image, img_buffer_to_cv2_img 
 from utils import init_music_player, recommend_songs
-from utils import select_true_emotion
+from utils import select_true_emotion, read_credential
 import streamlit as st
 import pandas as pd
 import tensorflow as tf
 import time 
 import pywhatkit
+from dataclasses import dataclass
+
 
 print = st.write
 
@@ -28,6 +30,12 @@ if 'welcome_init_state' not in st.session_state:
 
 if 'img_clicked' not in st.session_state:
 	st.session_state.img_clicked = False
+
+if 'emotion' not in st.session_state:
+    st.session_state.emotion = None
+
+if "img_buffer" not in st.session_state:
+    st.session_state.img_buffer = None
       
 def update_state_cb():
 	st.session_state.img_clicked = True
@@ -44,6 +52,8 @@ if (is_completed == 0):
     img_buffer = display_pic(camera_container, 42, st, update_state_cb)
 
     if img_buffer:
+        st.session_state.img_buffer = img_buffer
+        
         with st.spinner("Looking for Human Face..."):
             img_bytes = img_buffer_to_cv2_img(img_buffer)
             try: 
@@ -92,6 +102,8 @@ if (is_completed == 0):
                 st.write(f"#### The detected Emotion is :green[{emotion}], {confidence} confident")
             else:
                 st.write(f"#### The detected Emotion is :red[{emotion}], {confidence} confident")
+            
+            st.session_state.emotion = emotion
         
         with st.spinner("Recommending Songs..."):                
             st.header("Recommended Songs")
@@ -101,7 +113,7 @@ if (is_completed == 0):
             play_on = st.button(label="Play on YouTube", key=None, help=None, on_click=None, args=None, kwargs=None, use_container_width=True)
             
             if play_on:
-                pywhatkit.playonyt(music_list['name'][0])
+                pywhatkit.playonyt(f"{music_list['name'][0]} by {music_list['artist'][0]}")
         
 
 with st.sidebar:
@@ -111,8 +123,46 @@ with st.sidebar:
         if st.button("Retake Selfie"):
             camera_container.empty()
             st.session_state.img_clicked = False
+            # st.session_state[MESSAGES] = None
             st.rerun()
+            
+    if st.session_state.emotion in ["Angry", "Fear", "Sad"]:
+        import google.generativeai as genai
 
+        API_KEY = read_credential("Gemini AI", "Gemini AI")
 
+        def helpr(command, api_key=API_KEY):
+            genai.configure(api_key=API_KEY)
+            model = genai.GenerativeModel('gemini-1.0-pro')
+            response = model.generate_content([command], stream=True)
+            response.resolve()
+            return response.text
+        
+        pre_prompt = f"You are an experienced Therapist, and you are talking to a patient who is feeling {st.session_state.emotion}. You want to help them feel better. give them some advice or suggestions"
+        st.error("We recommend you to take some help with our AI Therapist")
+        
+        ctx = st.empty()
+        
+        @dataclass
+        class Message:
+            actor: str
+            payload: str
 
+        USER = "user"
+        ASSISTANT = "ai"
+        MESSAGES = "messages"
+        
+        if MESSAGES not in st.session_state:
+            helpr_response = helpr(pre_prompt)
+            st.session_state[MESSAGES] = [Message(actor=ASSISTANT, payload=helpr_response)]
 
+        prompt: str = ctx.chat_input("Ask the AI Therapist")
+
+        if prompt:
+            st.session_state[MESSAGES].append(Message(actor=USER, payload=prompt))
+            
+            response: str = f"{helpr(prompt)}"
+            st.session_state[MESSAGES].append(Message(actor=ASSISTANT, payload=response))
+        
+        for msg in reversed(st.session_state[MESSAGES]):
+            st.chat_message(msg.actor).write(msg.payload)
