@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import tensorflow as tf
 import time 
+import pywhatkit
 
 print = st.write
 
@@ -73,7 +74,7 @@ if (is_completed == 0):
                 img, emotion, confidence = analyze_emotions(img, model, tf)
                 confidence = round(confidence * 100, 2)
                 predicted_emotion.append(emotion)
-                predicted_confidence.append(confidence)
+                predicted_confidence.append(f"{confidence}%")
                 
             data = {
                 'Model name': model_names,
@@ -88,16 +89,19 @@ if (is_completed == 0):
             emotion, confidence = select_true_emotion(df)
 
             if emotion not in ["Angry", "Disgust", "Fear", "Sad"]:
-                st.write(f"#### The detected Emotion is :green[{emotion}], {confidence}% confident")
+                st.write(f"#### The detected Emotion is :green[{emotion}], {confidence} confident")
             else:
-                st.write(f"#### The detected Emotion is :red[{emotion}], {confidence}% confident")
+                st.write(f"#### The detected Emotion is :red[{emotion}], {confidence} confident")
         
         with st.spinner("Recommending Songs..."):                
             st.header("Recommended Songs")
             music_palyer = init_music_player()
             music_list = recommend_songs(emotion, music_palyer)
-            # confidence to be fixed
             st.table(music_list)
+            play_on = st.button(label="Play on YouTube", key=None, help=None, on_click=None, args=None, kwargs=None, use_container_width=True)
+            
+            if play_on:
+                pywhatkit.playonyt(music_list['name'][0])
         
 
 with st.sidebar:
