@@ -73,7 +73,7 @@ if (is_completed == 0):
                 img, emotion, confidence = analyze_emotions(img, model, tf)
                 confidence = round(confidence * 100, 2)
                 predicted_emotion.append(emotion)
-                predicted_confidence.append(f"{confidence}%")
+                predicted_confidence.append(confidence)
                 
             data = {
                 'Model name': model_names,
@@ -85,7 +85,7 @@ if (is_completed == 0):
             st.header("Emotion Analysis Summary")
             st.table(df)
             
-            emotion = select_true_emotion(df)
+            emotion, confidence = select_true_emotion(df)
 
             if emotion not in ["Angry", "Disgust", "Fear", "Sad"]:
                 st.write(f"#### The detected Emotion is :green[{emotion}], {confidence}% confident")
@@ -96,6 +96,7 @@ if (is_completed == 0):
             st.header("Recommended Songs")
             music_palyer = init_music_player()
             music_list = recommend_songs(emotion, music_palyer)
+            # confidence to be fixed
             st.table(music_list)
         
 
