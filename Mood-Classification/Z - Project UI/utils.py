@@ -3,6 +3,8 @@ import cv2
 from mtcnn import MTCNN
 import time
 import pandas as pd
+import keyring
+
 
 detector = MTCNN()
 
@@ -140,3 +142,7 @@ def select_true_emotion(df):
         return "Tie", 100
         
     return max_confidence_row['Predicted emotion'], max_confidence_row['Confidence']
+
+
+def read_credential(service_name, username):
+    return keyring.get_password(service_name, username)
