@@ -1,9 +1,10 @@
-import time
 import numpy as np
 import cv2
 from mtcnn import MTCNN
+import time
+import pandas as pd
+
 detector = MTCNN()
-import streamlit as st
 
 def typewriter(text: str, speed: int, st: object, init_state: bool = False) -> int:
     container = st.empty()
@@ -32,41 +33,12 @@ def display_pic(camera_container, key, st, update_state_cb):
         return bytes_data
     return None
 
-# def load_and_prep_image(img, img_shape = 48):
-#     # faceCascade = cv2.CascadeClassifier("haarcascade_frontalface_default.xml")  
+def img_buffer_to_cv2_img(img_buffer):
+    bytes_data = img_buffer.getvalue()
+    cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
+    return cv2_img
 
-#     # img = filename
-
-#     # GrayImg = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
-    
-#     # faces = faceCascade.detectMultiScale(GrayImg, 1.1, 4)
-    
-#     # for x,y,w,h in faces:
-        
-#     #     roi_GrayImg = GrayImg[ y: y + h , x: x + w ]
-#     #     roi_Img = img[ y: y + h , x: x + w ]
-        
-#     #     cv2.rectangle(img, (x,y), (x+w, y+h), (0, 255, 0), 2)
-        
-#     #     faces = faceCascade.detectMultiScale(roi_Img, 1.1, 4)
-       
-#     #     if len(faces) == 0:
-#     #         print("No Faces Detected")
-#     #         raise Exception("No Faces Detected")
-        
-#     #     else:
-#     #         for (ex, ey, ew, eh) in faces:
-#     #             img = roi_Img[ ey: ey+eh , ex: ex+ew ]
-    
-#             RGBImg = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            
-#             RGBImg = cv2.resize(RGBImg,(img_shape,img_shape))
-
-#             RGBImg = RGBImg/255.
-
-#             return RGBImg
-
-def load_and_prep_image(frame, img_shape=48):
+def find_face(frame):
     # Detect faces using MTCNN
     result = detector.detect_faces(frame)
 
@@ -79,42 +51,92 @@ def load_and_prep_image(frame, img_shape=48):
 
         # Resize and preprocess the face image
         face_image = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
-        face_image = cv2.resize(face_image, (img_shape, img_shape))
-        face_image = face_image / 255.
-        st.image(face_image, use_column_width=True)
-        st.image(frame, use_column_width=True)
-
+        
         return frame, face_image
 
-def pred_and_plot(filename, class_names, size, cnn_loaded_model, tf):
+def resize_image(face_image, img_shape=48):
+    face_image = cv2.resize(face_image, (img_shape, img_shape))
+    face_image = face_image / 255.
+    return face_image
 
+def analyze_emotions(img, cnn_loaded_model, tf):
+    class_names =  ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise']
     try: 
-        _, img = load_and_prep_image(filename, size)
-        st.image(img, use_column_width=True)
+        
         # Make a prediction
         Model_Prediction = np.argmax(cnn_loaded_model.predict(tf.expand_dims(img, axis=0), verbose=0))
         pred_class = class_names[Model_Prediction]
+        
         print("Sentiment Identified as: ", pred_class)
-        # return img, pred_class
+        
         predictions = cnn_loaded_model.predict(tf.expand_dims(img, axis=0), verbose=0)
         Model_Prediction = np.argmax(predictions)
         confidence = predictions[0, Model_Prediction]  # Confidence value for the predicted class
         pred_class = class_names[Model_Prediction]
+        
         print("Sentiment Identified as: ", pred_class)
         print("Confidence:", confidence)
-        st.write(f"The detected Emotion is :green[{pred_class}], {pred_class}")
         
-        return img, pred_class, pred_class
+        return img, pred_class, confidence
 
     except Exception as e:
         raise Exception(e)
 
+def init_music_player():
+    Music_Player = pd.read_csv("../big_data/spotify/data_moods.csv")
+    Music_Player = Music_Player[['name','artist','mood','popularity']]
+    return Music_Player
 
-def analysize(img_buffer, model, st, tf):
-    bytes_data = img_buffer.getvalue()
-    cv2_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
-    # try: 
-    img, em, cf  = pred_and_plot(cv2_img, ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sad', 'Surprise'], 48, model, tf)
-    return img, em, cf
-    # except Exception as e:
-    #     st.error("No Faces Detected. Please try again with a clear selfie.")
+# Making Songs Recommendations Based on Predicted Class
+def recommend_songs(pred_class, Music_Player):
+    
+    if( pred_class=='Sad' ):
+
+        Play = Music_Player[Music_Player['mood'] =='Sad' ]
+        Play = Play.sort_values(by="popularity", ascending=False)
+        Play = Play[:5].reset_index(drop=True)
+
+    if( pred_class=='Happy' or pred_class=='Neutral' ):
+
+        Play = Music_Player[Music_Player['mood'] =='Happy' ]
+        Play = Play.sort_values(by="popularity", ascending=False)
+        Play = Play[:5].reset_index(drop=True)
+
+    if( pred_class=='Fear' or pred_class=='Angry' ):
+
+        Play = Music_Player[Music_Player['mood'] =='Calm' ]
+        Play = Play.sort_values(by="popularity", ascending=False)
+        Play = Play[:5].reset_index(drop=True)
+
+    if( pred_class=='Surprise' or pred_class=='Disgust' ):
+
+        Play = Music_Player[Music_Player['mood'] =='Energetic' ]
+        Play = Play.sort_values(by="popularity", ascending=False)
+        Play = Play[:5].reset_index(drop=True)
+    
+    return Play
+
+def select_true_emotion(df):
+    # Find the mode (most frequent emotion)
+    mode_emotion = df['Predicted emotion'].mode()
+    
+    # If there's only one mode or no mode (all different emotions), return the emotion with the highest confidence
+    if len(mode_emotion) == 1:
+        mode_confidence = df[df['Predicted emotion'] == mode_emotion[0]]['Confidence'].max()
+        return mode_emotion[0], mode_confidence
+        # return mode_emotion[0]
+    
+    # Group by predicted emotion and find the row with the highest confidence for each emotion
+    max_confidence_df = df.groupby('Predicted emotion')['Confidence'].max().reset_index()
+    
+    # Find the row with the highest confidence
+    max_confidence_row = max_confidence_df.loc[max_confidence_df['Confidence'].idxmax()]
+
+    unique_emotions = df['Predicted emotion'].unique()
+    # print(unique_emotions)
+    unique_confidences = df['Confidence'].unique()
+    # print(unique_confidences)
+    if len(unique_emotions) == 4 and  len(unique_confidences) == 1:
+        return "Tie", 100
+        
+    return max_confidence_row['Predicted emotion'], max_confidence_row['Confidence']
